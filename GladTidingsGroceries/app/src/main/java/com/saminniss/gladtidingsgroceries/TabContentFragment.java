@@ -11,12 +11,15 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.provider.BaseColumns;
 import android.support.v4.app.Fragment;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.widget.TableLayout;
+import android.widget.TableRow;
 import android.widget.TextView;
 
 import org.json.JSONArray;
@@ -41,8 +44,8 @@ public class TabContentFragment extends Fragment {
      */
     SQLiteDatabase db = null;
     Cursor cursor = null;
-    Context fragment_context;
     TextView home_text_view;
+    View home_view;
 
     private static final String ARG_SECTION_NUMBER = "section_number";
 
@@ -73,7 +76,7 @@ public class TabContentFragment extends Fragment {
         switch (getArguments().getInt(ARG_SECTION_NUMBER))
         {
             case 1:
-                View home_view = inflater.inflate(R.layout.fragment_home, container, false);
+                home_view = inflater.inflate(R.layout.fragment_home, container, false);
                 home_text_view = (TextView) home_view.findViewById(R.id.section_label);
                 String time_now;
                 Calendar cal = new GregorianCalendar();
@@ -110,7 +113,7 @@ public class TabContentFragment extends Fragment {
 
         protected Boolean doInBackground(String... input) {
             todo = input[0];
-            switch (input[0]) {
+            switch (todo) {
 
                 case "populate home":
                     // if we have the cursor already, don't setup again
@@ -174,7 +177,6 @@ public class TabContentFragment extends Fragment {
                                     curr_row.getString("date"),
                                     curr_row.getString("by_who"),
                                     curr_row.getInt("hidden"));
-
                         }
 
 
@@ -200,10 +202,57 @@ public class TabContentFragment extends Fragment {
                     String[] row;
                     home_text_view.append("\n");
 
+                    TableLayout home_table = (TableLayout) home_view.findViewById(R.id.table);
+
                     while (good_move) {
                         row = GetRequestRow(cursor);
-                        home_text_view.append("\n"+ row[0] +"\t"+ row[1] +"\t"+ row[2] +"\t"+
-                                row[3] +"\t"+ row[4]);
+                        //home_text_view.append("\n"+ row[0] +"\t"+ row[1] +"\t"+ row[2] +"\t"+
+                        //        row[3] +"\t"+ row[4]);
+
+                        Context local_home_context = Home.home_context;
+
+
+                        TextView new_view1 = new TextView(local_home_context);
+                        TextView new_view2 = new TextView(local_home_context);
+                        TextView new_view3 = new TextView(local_home_context);
+                        TextView new_view4 = new TextView(local_home_context);
+
+                        new_view1.setText(row[1]);
+                        new_view1.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
+                        //new_view1.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+                        TableRow.LayoutParams new_view1_params = new TableRow.LayoutParams();
+                        new_view1_params.column = 0;
+                        new_view1_params.weight = 1;
+
+                        new_view2.setText(row[2]);
+                        new_view2.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
+                        //new_view2.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+                        TableRow.LayoutParams new_view2_params = new TableRow.LayoutParams();
+                        new_view2_params.column = 1;
+                        new_view2_params.weight = 1;
+
+                        new_view3.setText(row[3]);
+                        new_view3.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
+                        //new_view3.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+                        TableRow.LayoutParams new_view3_params = new TableRow.LayoutParams();
+                        new_view3_params.column = 2;
+                        new_view3_params.weight = 1;
+
+                        new_view4.setText(row[4]);
+                        new_view4.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
+                        //.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+                        TableRow.LayoutParams new_view4_params = new TableRow.LayoutParams();
+                        new_view4_params.column = 3;
+                        new_view4_params.weight = 1;
+
+                        TableRow new_row = new TableRow(Home.home_context);
+                        new_row.addView(new_view1, new_view1_params);
+                        new_row.addView(new_view2, new_view2_params);
+                        new_row.addView(new_view3, new_view3_params);
+                        new_row.addView(new_view4, new_view4_params);
+
+                        home_table.addView(new_row);
+
                         good_move = cursor.moveToNext();
                     }
                     break;

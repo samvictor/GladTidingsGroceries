@@ -3,4 +3,6 @@
     <color name="colorPrimary">#3F51B5</color>
     <color name="colorPrimaryDark">#303F9F</color>
     <color name="colorAccent">#FF4081</color>
+    <color name="home_table_head_color">#ff4030</color>
+    <color name="home_table_cell_color">#000000</color>
 </resources>
