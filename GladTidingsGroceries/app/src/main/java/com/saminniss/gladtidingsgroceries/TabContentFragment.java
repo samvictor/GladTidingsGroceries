@@ -22,14 +22,28 @@ import android.widget.TableLayout;
 import android.widget.TableRow;
 import android.widget.TextView;
 
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
@@ -46,12 +60,15 @@ public class TabContentFragment extends Fragment {
     Cursor cursor = null;
     TextView home_text_view;
     View home_view;
+    static boolean first_fire_attach = true;
 
     private static final String ARG_SECTION_NUMBER = "section_number";
 
     public TabContentFragment() {
 
         Log.i("times", "fragment constructor");
+
+
     }
 
     /**
@@ -86,7 +103,41 @@ public class TabContentFragment extends Fragment {
 
                 home_text_view.setTextColor(Color.parseColor("#000000"));
 
-                new DatabaseSetup().execute("populate home");
+                if (cursor == null)
+                    new DatabaseSetup().execute("setup");
+                else
+                    new DatabaseSetup().execute("populate home");
+
+                // FireBase
+                FirebaseDatabase database = FirebaseDatabase.getInstance();
+                DatabaseReference myRef = database.getReference("request/last_post");
+
+                if (first_fire_attach) {
+                    // Read from the database
+                    myRef.addValueEventListener(new ValueEventListener() {
+                        @Override
+                        public void onDataChange(DataSnapshot dataSnapshot) {
+                            // This method is called once with the initial value and again
+                            // whenever data at this location is updated.
+                            Long value = dataSnapshot.getValue(Long.class);
+                            Log.d("firebase", "Value is: " + value);
+
+                            if (cursor == null)
+                                new DatabaseSetup().execute("setup");
+                            else
+                                new DatabaseSetup().execute("populate home");
+                        }
+
+                        @Override
+                        public void onCancelled(DatabaseError error) {
+                            // Failed to read value
+                            Log.w("firebase", "Failed to read value. ", error.toException());
+                        }
+                    });
+
+                    first_fire_attach = false;
+                }
+
                 return home_view;
 
             case 2:
@@ -115,10 +166,6 @@ public class TabContentFragment extends Fragment {
             todo = input[0];
             switch (todo) {
 
-                case "populate home":
-                    // if we have the cursor already, don't setup again
-                    if (cursor != null)
-                        break;
                 case "setup":
                     Db db_helper = new Db(Home.home_context);
 
@@ -127,65 +174,13 @@ public class TabContentFragment extends Fragment {
 
                     cursor = GetRequests(db);
 
-                    HttpURLConnection conn = null;
-                    String url_str = "";
-                    String data_str = "";
-                    try {
-                        String urlParameters  = "todo=get_requests";
-                        byte[] postData       = urlParameters.getBytes( StandardCharsets.UTF_8 );
-                        int    postDataLength = postData.length;
-                               url_str        = "http://www.gtcacademy.org/groceries/app_data.php";
-                        URL    url            = new URL( url_str );
-                        conn = (HttpURLConnection) url.openConnection();
-                        conn.setDoOutput( true );
-                        conn.setInstanceFollowRedirects( false );
-                        conn.setRequestMethod( "POST" );
-                        conn.setRequestProperty( "Content-Type", "application/x-www-form-urlencoded");
-                        conn.setRequestProperty( "charset", "utf-8");
-                        conn.setRequestProperty( "Content-Length", Integer.toString( postDataLength ));
-                        conn.setUseCaches( false );
-                        try( DataOutputStream wr = new DataOutputStream( conn.getOutputStream())) {
-                            wr.write( postData );
-                        }
+                case "populate home":
 
-
-                        InputStream in = new BufferedInputStream(conn.getInputStream());
-
-                        for (int c; (c = in.read()) >= 0;) {
-                            data_str += ((char) c);
-                        }
-                    }
-                    catch (Exception e) {
-                        Log.e("internet json", "Error getting data from "+ url_str +" "+ e.toString());
-                    }
-                    conn.disconnect();
-
-                    data_str = data_str.split("<!--end of data-->")[0];
-                    try {
-                        JSONArray data_json = new JSONArray(data_str);
-                        db.delete(RequestsDbInfo.TABLE_NAME, null, null);
-
-                        JSONObject curr_row;
-
-                        for (int i = 0; i < data_json.length(); i++) {
-                            curr_row = data_json.getJSONObject(i);
-                            System.out.println(i + " = " + curr_row);
-                            InsertRequest(db,
-                                    curr_row.getInt("id"),
-                                    curr_row.getInt("quantity"),
-                                    curr_row.getString("item"),
-                                    curr_row.getString("date"),
-                                    curr_row.getString("by_who"),
-                                    curr_row.getInt("hidden"));
-                        }
-
-
-                    }
-                    catch (Exception e) {
-                        Log.e("internet json", "Error parsing JSON and entering into DB" + e.toString());
-                    }
-
+                    UpdateDatabase();
                     break;
+
+                default:
+                    Log.e("internet json", "nothing to do for background. todo = " + todo);
             }
             return true;
         }
@@ -196,69 +191,19 @@ public class TabContentFragment extends Fragment {
         protected void onPostExecute(Boolean input) {
 
             switch (todo) {
+                case "setup":
                 case "populate home":
-                    Boolean good_move = cursor.moveToFirst();
-                    // {id, quantity, item, date, by_who, hidden};
-                    String[] row;
-                    home_text_view.append("\n");
-
-                    TableLayout home_table = (TableLayout) home_view.findViewById(R.id.table);
-
-                    while (good_move) {
-                        row = GetRequestRow(cursor);
-                        //home_text_view.append("\n"+ row[0] +"\t"+ row[1] +"\t"+ row[2] +"\t"+
-                        //        row[3] +"\t"+ row[4]);
-
-                        Context local_home_context = Home.home_context;
-
-
-                        TextView new_view1 = new TextView(local_home_context);
-                        TextView new_view2 = new TextView(local_home_context);
-                        TextView new_view3 = new TextView(local_home_context);
-                        TextView new_view4 = new TextView(local_home_context);
-
-                        new_view1.setText(row[1]);
-                        new_view1.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
-                        //new_view1.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
-                        TableRow.LayoutParams new_view1_params = new TableRow.LayoutParams();
-                        new_view1_params.column = 0;
-                        new_view1_params.weight = 1;
-
-                        new_view2.setText(row[2]);
-                        new_view2.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
-                        //new_view2.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
-                        TableRow.LayoutParams new_view2_params = new TableRow.LayoutParams();
-                        new_view2_params.column = 1;
-                        new_view2_params.weight = 1;
-
-                        new_view3.setText(row[3]);
-                        new_view3.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
-                        //new_view3.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
-                        TableRow.LayoutParams new_view3_params = new TableRow.LayoutParams();
-                        new_view3_params.column = 2;
-                        new_view3_params.weight = 1;
-
-                        new_view4.setText(row[4]);
-                        new_view4.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
-                        //.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
-                        TableRow.LayoutParams new_view4_params = new TableRow.LayoutParams();
-                        new_view4_params.column = 3;
-                        new_view4_params.weight = 1;
-
-                        TableRow new_row = new TableRow(Home.home_context);
-                        new_row.addView(new_view1, new_view1_params);
-                        new_row.addView(new_view2, new_view2_params);
-                        new_row.addView(new_view3, new_view3_params);
-                        new_row.addView(new_view4, new_view4_params);
-
-                        home_table.addView(new_row);
-
-                        good_move = cursor.moveToNext();
-                    }
+                    UpdateUI();
                     break;
+
+                default:
+                    Log.e("internet json", "nothing to do for post execute. todo = " + todo);
             }
         }
     }
+
+
+
 
     // Database stuff
     public static class RequestsDbInfo implements BaseColumns {
@@ -380,6 +325,212 @@ public class TabContentFragment extends Fragment {
         };
 
         return ret_array;
+    }
+
+
+
+    public void UpdateDatabase() {
+        //HttpURLConnection conn = null;
+        URLConnection conn = null;
+        String url_str = "";
+        String data_str = "";
+        BufferedReader reader=null;
+
+        try {
+            /*
+            String urlParameters  = "todo=get_requests";
+            byte[] postData       = urlParameters.getBytes( StandardCharsets.UTF_8 );
+            int    postDataLength = postData.length;
+            url_str        = "http://www.gtcacademy.org/groceries/app_data.php";
+            URL    url            = new URL( url_str );
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setDoOutput( true );
+            conn.setChunkedStreamingMode(0);
+            conn.setInstanceFollowRedirects( false );
+            conn.setRequestMethod( "POST" );
+            //conn.setRequestProperty( "Content-Type", "application/x-www-form-urlencoded");
+            conn.setRequestProperty( "charset", "utf-8");
+            //conn.setRequestProperty( "Content-Length", Integer.toString( postDataLength ));
+            conn.setUseCaches( false );
+            //try( DataOutputStream wr = new DataOutputStream( conn.getOutputStream())) {
+            //    wr.write( postData );
+            //}
+
+            */
+
+            String data = URLEncoder.encode("todo", "UTF-8")
+                    + "=" + URLEncoder.encode("get_requests", "UTF-8");
+
+            data += "&" + URLEncoder.encode("email", "UTF-8") + "="
+                    + URLEncoder.encode("myemail", "UTF-8");
+
+            data += "&" + URLEncoder.encode("user", "UTF-8")
+                    + "=" + URLEncoder.encode("mylogin", "UTF-8");
+
+            data += "&" + URLEncoder.encode("pass", "UTF-8")
+                    + "=" + URLEncoder.encode("mypass", "UTF-8");
+
+            String text = "";
+
+            URL url = new URL("http://www.gtcacademy.org/groceries/app_data.php");
+
+            // Send POST data request
+
+            conn = url.openConnection();
+            conn.setDoOutput(true);
+
+
+            OutputStreamWriter wr = new OutputStreamWriter(conn.getOutputStream());
+            wr.write( data );
+            wr.flush();
+
+            // Get the server response
+
+            reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+
+            // Read Server Response
+            while((line = reader.readLine()) != null)
+            {
+                // Append server response in string
+                sb.append(line + "\n");
+            }
+
+
+            text = sb.toString();
+
+            data_str = text;
+
+            //OutputStream out = new BufferedOutputStream(conn.getOutputStream());
+            //out.write(postData);
+
+            /*
+            InputStream in = new BufferedInputStream(conn.getInputStream());
+
+            data_str = "";
+            for (int c; (c = in.read()) >= 0;) {
+                data_str += ((char) c);
+            }
+
+
+            if (in != null) {
+                in.close();
+            } */
+
+        }
+        catch (Exception e) {
+            Log.e("internet json", "Error getting data from "+ url_str +" "+ e.toString());
+        }
+        try {
+            //conn.disconnect();
+            reader.close();
+        }
+
+        catch(Exception ex) {}
+
+        data_str = data_str.split("<!--end of data-->")[0];
+        try {
+            JSONArray data_json = new JSONArray (data_str);
+            db.delete(RequestsDbInfo.TABLE_NAME, null, null);
+
+
+            JSONObject curr_row;
+
+            for (int i = 0; i < data_json.length(); i++) {
+                curr_row = data_json.getJSONObject(i);
+                System.out.println(i + " = " + curr_row);
+                InsertRequest(db,
+                        curr_row.getInt("id"),
+                        curr_row.getInt("quantity"),
+                        curr_row.getString("item"),
+                        curr_row.getString("date"),
+                        curr_row.getString("by_who"),
+                        curr_row.getInt("hidden"));
+
+            }
+
+            cursor = GetRequests(db);
+
+
+        }
+        catch (Exception e) {
+            Log.e("internet json", "Error parsing JSON and entering into DB" + e.toString());
+        }
+    }
+
+    public void UpdateUI() {
+
+        Log.i("update ui", "Starting 'UpdateUI()' ");
+
+        Boolean good_move = cursor.moveToFirst();
+        // {id, quantity, item, date, by_who, hidden};
+        String[] row;
+
+        TableLayout home_table = (TableLayout) home_view.findViewById(R.id.table);
+
+        int count = home_table.getChildCount();
+        for (int i = 1; i < count; i++) {
+            View child = home_table.getChildAt(i);
+            if (child instanceof TableRow)
+                ((ViewGroup) child).removeAllViews();
+        }
+        //home_table.removeAllViews();
+
+        Log.i("update ui", "going into loop");
+
+        while (good_move) {
+            row = GetRequestRow(cursor);
+
+            Log.i("update ui", "appending " + row[0] +"\t"+ row[1] +"\t"+ row[2] +"\t"+
+                    row[3] +"\t"+ row[4]);
+
+            Context local_home_context = Home.home_context;
+
+
+            TextView new_view1 = new TextView(local_home_context);
+            TextView new_view2 = new TextView(local_home_context);
+            TextView new_view3 = new TextView(local_home_context);
+            TextView new_view4 = new TextView(local_home_context);
+
+            new_view1.setText(row[1]);
+            new_view1.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
+            //new_view1.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+            TableRow.LayoutParams new_view1_params = new TableRow.LayoutParams();
+            new_view1_params.column = 0;
+            new_view1_params.weight = 1;
+
+            new_view2.setText(row[2]);
+            new_view2.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
+            //new_view2.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+            TableRow.LayoutParams new_view2_params = new TableRow.LayoutParams();
+            new_view2_params.column = 1;
+            new_view2_params.weight = 1;
+
+            new_view3.setText(row[3]);
+            new_view3.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
+            //new_view3.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+            TableRow.LayoutParams new_view3_params = new TableRow.LayoutParams();
+            new_view3_params.column = 2;
+            new_view3_params.weight = 1;
+
+            new_view4.setText(row[4]);
+            new_view4.setTextColor(ContextCompat.getColor(local_home_context, R.color.home_table_cell_color));
+            //.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+            TableRow.LayoutParams new_view4_params = new TableRow.LayoutParams();
+            new_view4_params.column = 3;
+            new_view4_params.weight = 1;
+
+            TableRow new_row = new TableRow(Home.home_context);
+            new_row.addView(new_view1, new_view1_params);
+            new_row.addView(new_view2, new_view2_params);
+            new_row.addView(new_view3, new_view3_params);
+            new_row.addView(new_view4, new_view4_params);
+
+            home_table.addView(new_row);
+
+            good_move = cursor.moveToNext();
+        }
     }
 
 }

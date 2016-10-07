@@ -116,7 +116,7 @@ public class Home extends AppCompatActivity {
             // tab names
             switch (position) {
                 case 0:
-                    return "HOME";
+                    return "GROCERIES";
                 case 1:
                     return "REQUEST";
                 case 2:
