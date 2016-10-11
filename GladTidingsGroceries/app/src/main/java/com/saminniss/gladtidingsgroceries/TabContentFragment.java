@@ -31,20 +31,12 @@ import com.google.firebase.database.ValueEventListener;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.DataOutputStream;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 
@@ -56,11 +48,12 @@ public class TabContentFragment extends Fragment {
      * The fragment argument representing the section number for this
      * fragment.
      */
-    SQLiteDatabase db = null;
-    Cursor cursor = null;
+    static SQLiteDatabase db = null;
+    public static Cursor cursor = null;
     TextView home_text_view;
-    View home_view;
+    static View home_view;
     static boolean first_fire_attach = true;
+    static boolean home_fragment_alive = false;
 
     private static final String ARG_SECTION_NUMBER = "section_number";
 
@@ -90,26 +83,25 @@ public class TabContentFragment extends Fragment {
                              Bundle savedInstanceState) {
         Log.i("times", "on create view");
 
-        switch (getArguments().getInt(ARG_SECTION_NUMBER))
-        {
+        switch (getArguments().getInt(ARG_SECTION_NUMBER)) {
             case 1:
+                home_fragment_alive = true;
                 home_view = inflater.inflate(R.layout.fragment_home, container, false);
                 home_text_view = (TextView) home_view.findViewById(R.id.section_label);
                 String time_now;
                 Calendar cal = new GregorianCalendar();
                 time_now = Long.toString(cal.getTimeInMillis());
-                home_text_view.setText("The time is: " + time_now + "\nWhich is "
-                        +cal.getTime().toString());
+                //home_text_view.setText("The time is: " + time_now + "\nWhich is "
+                //        +cal.getTime().toString());
+                home_text_view.setText("Here is the Glad Tidings grocery list:");
+
 
                 home_text_view.setTextColor(Color.parseColor("#000000"));
 
-                if (cursor == null)
-                    new DatabaseSetup().execute("setup");
-                else
-                    new DatabaseSetup().execute("populate home");
+                CheckAndUpdate();
 
                 // FireBase
-                FirebaseDatabase database = FirebaseDatabase.getInstance();
+                /*FirebaseDatabase database = FirebaseDatabase.getInstance();
                 DatabaseReference myRef = database.getReference("request/last_post");
 
                 if (first_fire_attach) {
@@ -122,10 +114,7 @@ public class TabContentFragment extends Fragment {
                             Long value = dataSnapshot.getValue(Long.class);
                             Log.d("firebase", "Value is: " + value);
 
-                            if (cursor == null)
-                                new DatabaseSetup().execute("setup");
-                            else
-                                new DatabaseSetup().execute("populate home");
+                            CheckAndUpdate();
                         }
 
                         @Override
@@ -136,7 +125,7 @@ public class TabContentFragment extends Fragment {
                     });
 
                     first_fire_attach = false;
-                }
+                }*/
 
                 return home_view;
 
@@ -158,7 +147,27 @@ public class TabContentFragment extends Fragment {
         return null;
     }
 
-    private class DatabaseSetup extends AsyncTask<String, Void, Boolean> {
+    @Override
+    public void onResume() {
+        home_fragment_alive = true;
+        CheckAndUpdate();
+        super.onResume();
+    }
+
+    @Override
+    public void onPause() {
+        home_fragment_alive = false;
+        super.onPause();
+    }
+
+    public static void CheckAndUpdate() {
+        if (cursor == null || db == null)
+            new DatabaseSetup().execute("setup");
+        else
+            new DatabaseSetup().execute("populate home");
+    }
+
+    public static class DatabaseSetup extends AsyncTask<String, Void, Boolean> {
 
         String todo = null;
 
@@ -167,7 +176,7 @@ public class TabContentFragment extends Fragment {
             switch (todo) {
 
                 case "setup":
-                    Db db_helper = new Db(Home.home_context);
+                    DbHelper db_helper = new DbHelper(Home.home_context);
 
                     // Gets the data repository in write mode
                     db = db_helper.getWritableDatabase();
@@ -176,7 +185,7 @@ public class TabContentFragment extends Fragment {
 
                 case "populate home":
 
-                    UpdateDatabase();
+                    UpdateDatabase(db);
                     break;
 
                 default:
@@ -245,12 +254,12 @@ public class TabContentFragment extends Fragment {
                 "DROP TABLE IF EXISTS " + TABLE_NAME;
     }
 
-    public class Db extends SQLiteOpenHelper {
+    public static class DbHelper extends SQLiteOpenHelper {
         // If you change the database schema, you must increment the database version.
         public static final int DATABASE_VERSION = 1;
         public static final String DATABASE_NAME = RequestsDbInfo.DB_NAME;
 
-        public Db(Context context) {
+        public DbHelper(Context context) {
             super(context, DATABASE_NAME, null, DATABASE_VERSION);
         }
         public void onCreate(SQLiteDatabase db) {
@@ -267,7 +276,7 @@ public class TabContentFragment extends Fragment {
         }
     }
 
-    public Long InsertRequest(SQLiteDatabase db, int id, int quantity, String item, String date, String name, int hidden)
+    public static Long InsertRequest(SQLiteDatabase db, int id, int quantity, String item, String date, String name, int hidden)
     {
         // Create a new map of values, where column names are the keys
         ContentValues values = new ContentValues();
@@ -292,7 +301,7 @@ public class TabContentFragment extends Fragment {
         }
     }
 
-    public Cursor GetRequests(SQLiteDatabase db)
+    public static Cursor GetRequests(SQLiteDatabase db)
     {
         String[] zero_string_array = {"0"};
 
@@ -308,7 +317,7 @@ public class TabContentFragment extends Fragment {
         return cursor;
     }
 
-    public String[] GetRequestRow(Cursor cursor) {
+    public static String[] GetRequestRow(Cursor cursor) {
         // gets the row that the cursor is currently pointing to
         // {id, quantity, item, date, by_who, hidden}
         String[] ret_array = {
@@ -329,7 +338,7 @@ public class TabContentFragment extends Fragment {
 
 
 
-    public void UpdateDatabase() {
+    public static void UpdateDatabase(SQLiteDatabase db) {
         //HttpURLConnection conn = null;
         URLConnection conn = null;
         String url_str = "";
@@ -360,15 +369,6 @@ public class TabContentFragment extends Fragment {
 
             String data = URLEncoder.encode("todo", "UTF-8")
                     + "=" + URLEncoder.encode("get_requests", "UTF-8");
-
-            data += "&" + URLEncoder.encode("email", "UTF-8") + "="
-                    + URLEncoder.encode("myemail", "UTF-8");
-
-            data += "&" + URLEncoder.encode("user", "UTF-8")
-                    + "=" + URLEncoder.encode("mylogin", "UTF-8");
-
-            data += "&" + URLEncoder.encode("pass", "UTF-8")
-                    + "=" + URLEncoder.encode("mypass", "UTF-8");
 
             String text = "";
 
@@ -434,12 +434,12 @@ public class TabContentFragment extends Fragment {
             JSONArray data_json = new JSONArray (data_str);
             db.delete(RequestsDbInfo.TABLE_NAME, null, null);
 
-
             JSONObject curr_row;
 
             for (int i = 0; i < data_json.length(); i++) {
                 curr_row = data_json.getJSONObject(i);
-                System.out.println(i + " = " + curr_row);
+                Log.i("internet json", "inserting into db");
+                Log.i("internet json", i + " = " + curr_row);
                 InsertRequest(db,
                         curr_row.getInt("id"),
                         curr_row.getInt("quantity"),
@@ -451,15 +451,14 @@ public class TabContentFragment extends Fragment {
             }
 
             cursor = GetRequests(db);
-
-
         }
         catch (Exception e) {
             Log.e("internet json", "Error parsing JSON and entering into DB" + e.toString());
         }
+
     }
 
-    public void UpdateUI() {
+    public static void UpdateUI() {
 
         Log.i("update ui", "Starting 'UpdateUI()' ");
 

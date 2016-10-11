@@ -15,6 +15,8 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import com.google.firebase.messaging.FirebaseMessaging;
+
 public class Home extends AppCompatActivity {
 
     /**
@@ -61,6 +63,7 @@ public class Home extends AppCompatActivity {
         });*/
 
         home_context = this;
+        FirebaseMessaging.getInstance().subscribeToTopic("all");
 
         Log.i("times", "Activity Create");
     }
@@ -108,7 +111,7 @@ public class Home extends AppCompatActivity {
         @Override
         public int getCount() {
             // Show 3 total pages.
-            return 3;
+            return 1;
         }
 
         @Override
@@ -116,11 +119,11 @@ public class Home extends AppCompatActivity {
             // tab names
             switch (position) {
                 case 0:
-                    return "GROCERIES";
+                    return "GROCERIES";/*
                 case 1:
                     return "REQUEST";
                 case 2:
-                    return "INVENTORY";
+                    return "INVENTORY";*/
             }
             return null;
         }
